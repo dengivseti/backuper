@@ -16,9 +16,8 @@ path_file_ini = "config.ini"
 CONFIG = GetConfig.get_config(path_file_ini)
 SETTINGS = CONFIG["settings"]
 MYSQL_SETTINGS = CONFIG["mysql"]
-
 KEY_NAME = SETTINGS["crypto_key"]
-TEMP_FOLDER = f'{SETTINGS["temp_folder"]}/{TIME}/'
+TEMP_FOLDER = f'{SETTINGS["temp_folder"]}{TIME}/'
 OUTPUT_FOLDER = SETTINGS["output_folder"]
 
 
@@ -41,12 +40,14 @@ def load_key():
 
 
 def encrypt_file(filename, key):
+    time_start = time.time()
     f = Fernet(key)
     with open(filename, "rb") as file:
         data = file.read()
     encrypted_data = f.encrypt(data)
     with open(filename, "wb") as file:
         file.write(encrypted_data)
+    logger.info(f'{round(time.time() - time_start, 2)} second encrypted')
 
 
 def decrypt_file(filename, key):
@@ -58,7 +59,7 @@ def decrypt_file(filename, key):
         file.write(decrypted_data)
 
 
-def backup_mysql():
+def backup_mysql(path):
     try:
         if not DB_HOST or not DB_USER or not DB_USER_PASSWORD or not DB_NAMES:
             raise ValueError("Missing values")
@@ -73,7 +74,7 @@ def backup_mysql():
             + " "
             + DB_NAMES
             + " > "
-            + PATH_SQL_FILE
+            + path
         )
         os.system(dumpcmd)
     except Exception as e:
@@ -93,26 +94,44 @@ def remove_file(file):
         logger.error("The file does not exist")
 
 
-def crate_archive():
-    zip = zipfile.ZipFile(f"{TEMP_FOLDER}{TIME}.zip", "w", zipfile.ZIP_DEFLATED)
-    for folder in INPUT_FOLDERS:
-        for root, dirs, files in os.walk(folder):
-            if os.path.basename(root) in LIST_IGNORE_FOLDERS:
-                logger.info(f"IGNORE FOLDER {os.path.basename(root)}")
-                zip.write(os.path.join(root))
-                continue
-            for file in files:
-                if file.split(".")[-1] in LIST_IGNORE_TYPE_FILE:
+def backup():
+    TIME = time.strftime("%Y%m%d-%H%M%S")
+    TEMP_FOLDER = f'{SETTINGS["temp_folder"]}{TIME}/'
+    time_start = time.time()
+    if not os.path.exists(TEMP_FOLDER):
+        os.mkdir(TEMP_FOLDER)
+    FILE_SQL = TIME + ".sql"
+    PATH_SQL_FILE = TEMP_FOLDER + FILE_SQL
+    if not os.path.exists(OUTPUT_FOLDER + TIME):
+        os.mkdir(OUTPUT_FOLDER + TIME)
+
+    try:
+        zip_file = f"{TEMP_FOLDER}{TIME}.zip"
+        zip = zipfile.ZipFile(zip_file, "w", zipfile.ZIP_DEFLATED)
+        for folder in INPUT_FOLDERS:
+            for root, dirs, files in os.walk(folder):
+                if os.path.basename(root) in LIST_IGNORE_FOLDERS:
+                    logger.info(f"IGNORE FOLDER {os.path.basename(root)}")
+                    zip.write(os.path.join(root))
                     continue
-                zip.write(os.path.join(root, file))
+                for file in files:
+                    if file.split(".")[-1] in LIST_IGNORE_TYPE_FILE:
+                        continue
+                    zip.write(os.path.join(root, file))
         if SETTINGS["backup_mysql_bd"]:
-            backup_mysql()
+            logger.info('Clone MYSQL DB')
+            backup_mysql(PATH_SQL_FILE)
             if os.path.isfile(PATH_SQL_FILE):
                 logger.info("Add sql file")
                 zip.write(PATH_SQL_FILE, arcname="sql\\" + FILE_SQL)
                 remove_file(PATH_SQL_FILE)
         zip.close()
-        shutil.move(f"{TEMP_FOLDER}{TIME}.zip", OUTPUT_FOLDER + TIME)
+        encrypt_file(zip_file, key)
+        shutil.move(zip_file, OUTPUT_FOLDER + TIME)
+    except Exception as e:
+        logger.error(f'Error on crate_archive: {e}')
+    finally:
+        logger.info(f'{round(time.time() - time_start, 2)} second work with {OUTPUT_FOLDER}{TIME}/{TIME}.zip')
         shutil.rmtree(TEMP_FOLDER, ignore_errors=True)
 
 
@@ -128,15 +147,14 @@ if __name__ == "__main__":
         )
     else:
         key = load_key()
-    if not os.path.exists(TEMP_FOLDER):
-        os.mkdir(TEMP_FOLDER)
-    FILE_SQL = TIME + ".sql"
-    PATH_SQL_FILE = TEMP_FOLDER + FILE_SQL
-    if not os.path.exists(OUTPUT_FOLDER + TIME):
-        os.mkdir(OUTPUT_FOLDER + TIME)
 
     INPUT_FOLDERS = list_type(SETTINGS["input_folders"])
     LIST_IGNORE_FOLDERS = list_type(SETTINGS["list_ignore_folders"])
     LIST_IGNORE_TYPE_FILE = list_type(SETTINGS["list_ignore_type_file"])
 
-    crate_archive()
+    schedule.every().hour.do(backup)
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+
+

@@ -5,4 +5,5 @@ test/
 tests/
 *__pycache__/
 keys/
-*_dev
+*_dev*
+.idea
