@@ -7,3 +7,4 @@ tests/
 keys/
 *_dev*
 .idea
+*.bat

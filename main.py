@@ -136,6 +136,7 @@ def backup():
 
 
 if __name__ == "__main__":
+    logger.info('Start script')
     if not os.path.exists("keys/"):
         logger.info("Create keys folder")
         os.mkdir("keys/")
