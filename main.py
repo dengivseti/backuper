@@ -153,7 +153,7 @@ if __name__ == "__main__":
     LIST_IGNORE_FOLDERS = list_type(SETTINGS["list_ignore_folders"])
     LIST_IGNORE_TYPE_FILE = list_type(SETTINGS["list_ignore_type_file"])
 
-    schedule.every().hour.at("1:30").do(backup)
+    schedule.every().hour.at("01:30").do(backup)
     while True:
         schedule.run_pending()
         time.sleep(1)
